@@ -1,6 +1,8 @@
 import crypto from "crypto";
 import mongoose from "mongoose";
 
+const randomToken = () => crypto.randomBytes(8).toString("hex");
+
 const bookingSchema = new mongoose.Schema(
   {
     date: { type: String, required: true }, // "2026-11-20"
@@ -24,12 +26,11 @@ const bookingSchema = new mongoose.Schema(
     active: { type: Boolean, default: true }, // false = bekor qilingan, vaqt bo'sh
 
     // Mijozning Telegramini shu bronga bog'lash uchun
-    telegramToken: {
-      type: String,
-      default: () => crypto.randomBytes(8).toString("hex"),
-      index: true,
-    },
+    telegramToken: { type: String, default: randomToken, index: true },
     telegramChatId: { type: String, default: "" },
+
+    // Mijoz saytda o'z bronini ko'rishi uchun
+    viewToken: { type: String, default: randomToken, index: true },
   },
   {
     timestamps: true,
@@ -41,6 +42,7 @@ const bookingSchema = new mongoose.Schema(
         delete ret._id;
         delete ret.telegramToken;
         delete ret.telegramChatId;
+        delete ret.viewToken;
         return ret;
       },
     },

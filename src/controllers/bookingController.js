@@ -71,10 +71,11 @@ export const createBooking = async (req, res) => {
       console.error("Telegramga yuborilmadi:", err.message)
     );
 
-    // Mijoz botga ulanishi uchun havola ham qaytariladi
+    // Mijozga: Telegram havolasi va saytda ko'rish uchun kod
     res.status(201).json({
       ...booking.toJSON(),
       telegramLink: getBotLink(booking.telegramToken),
+      viewToken: booking.viewToken,
     });
   } catch (err) {
     // Bir vaqtga boshqa odam ulgurib bron qilib qo'ygan
@@ -83,6 +84,35 @@ export const createBooking = async (req, res) => {
     }
     throw err;
   }
+};
+
+// Mijozning o'z bronlari (kodlar bo'yicha). Shaxsiy ma'lumot qaytarilmaydi
+export const getMyBookings = async (req, res) => {
+  const { tokens } = req.body;
+  const valid =
+    Array.isArray(tokens) &&
+    tokens.length > 0 &&
+    tokens.length <= 20 &&
+    tokens.every((t) => typeof t === "string" && /^[a-f0-9]{16}$/.test(t));
+
+  if (!valid) {
+    return res.status(400).json({ message: "So'rov noto'g'ri" });
+  }
+
+  const bookings = await Booking.find({ viewToken: { $in: tokens } }).sort({
+    date: 1,
+    time: 1,
+  });
+
+  res.json(
+    bookings.map((b) => ({
+      id: b.id,
+      date: b.date,
+      time: b.time,
+      status: b.status,
+      services: b.services,
+    }))
+  );
 };
 
 // Barcha bronlar (admin)
