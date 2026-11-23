@@ -36,3 +36,5 @@ export const isPastSlot = (date, time) => {
   const [h, m] = time.split(":").map(Number);
   return h * 60 + m <= now.minutes;
 };
+// Toshkent vaqti bo'yicha bugungi sana: "2026-11-23"
+export const todayKey = () => nowInTashkent().date;

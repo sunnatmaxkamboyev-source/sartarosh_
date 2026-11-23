@@ -68,6 +68,20 @@ export const notifyNewBooking = async (booking) => {
   await sendTelegramMessage(lines.join("\n"));
 };
 
+// Sizga: mijoz o'zi bronni bekor qildi
+export const notifyAdminClientCancelled = async (booking) => {
+  const text = [
+    "🚫 <b>Mijoz bronni bekor qildi</b>",
+    "",
+    `📅 ${formatDate(booking.date)}`,
+    `🕒 ${slotRange(booking.time)}`,
+    `👤 ${escapeHtml(booking.name)}`,
+    `📞 ${formatPhone(booking.phone)}`,
+  ].join("\n");
+
+  await sendTelegramMessage(text);
+};
+
 // Mijozga: bron bekor qilindi (faqat botga ulangan bo'lsa)
 export const notifyClientCancelled = async (booking) => {
   if (!booking.telegramChatId) return;
@@ -79,6 +93,22 @@ export const notifyClientCancelled = async (booking) => {
     `🕒 ${slotRange(booking.time)}`,
     "",
     "Qulay boshqa vaqtni saytdan tanlashingiz mumkin.",
+  ].join("\n");
+
+  await sendTelegramMessage(text, booking.telegramChatId);
+};
+
+// Mijozga: xizmat bajarildi (faqat botga ulangan bo'lsa)
+export const notifyClientDone = async (booking) => {
+  if (!booking.telegramChatId) return;
+
+  const text = [
+    "✅ <b>Xizmat bajarildi</b>",
+    "",
+    `📅 ${formatDate(booking.date)}`,
+    `🕒 ${slotRange(booking.time)}`,
+    "",
+    "Rahmat! Yana kutib qolamiz.",
   ].join("\n");
 
   await sendTelegramMessage(text, booking.telegramChatId);

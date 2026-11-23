@@ -1,12 +1,20 @@
 import Booking from "../models/Booking.js";
 import Service from "../models/Service.js";
-import { generateSlots, isPastSlot } from "../config/schedule.js";
+import { generateSlots, isPastSlot, todayKey } from "../config/schedule.js";
 import { isValidDate, isValidPhone } from "../utils/validate.js";
 import {
   getBotLink,
+  notifyAdminClientCancelled,
   notifyClientCancelled,
+  notifyClientDone,
   notifyNewBooking,
 } from "../services/telegram.js";
+
+const isValidToken = (t) =>
+  typeof t === "string" && /^[a-f0-9]{16}$/.test(t);
+
+const logError = (label) => (err) =>
+  console.error(`${label}:`, err.message);
 
 // Shu kundagi band vaqtlar (mijozlar sahifasi uchun)
 export const getBookedSlots = async (req, res) => {
@@ -67,9 +75,7 @@ export const createBooking = async (req, res) => {
     });
 
     // Sizga xabar (kutmaymiz: xabar bormasa ham bron saqlanadi)
-    notifyNewBooking(booking).catch((err) =>
-      console.error("Telegramga yuborilmadi:", err.message)
-    );
+    notifyNewBooking(booking).catch(logError("Telegramga yuborilmadi"));
 
     // Mijozga: Telegram havolasi va saytda ko'rish uchun kod
     res.status(201).json({
@@ -93,7 +99,7 @@ export const getMyBookings = async (req, res) => {
     Array.isArray(tokens) &&
     tokens.length > 0 &&
     tokens.length <= 20 &&
-    tokens.every((t) => typeof t === "string" && /^[a-f0-9]{16}$/.test(t));
+    tokens.every(isValidToken);
 
   if (!valid) {
     return res.status(400).json({ message: "So'rov noto'g'ri" });
@@ -107,12 +113,39 @@ export const getMyBookings = async (req, res) => {
   res.json(
     bookings.map((b) => ({
       id: b.id,
+      token: b.viewToken, // mijozning o'z kodi, bekor qilish uchun kerak
       date: b.date,
       time: b.time,
       status: b.status,
       services: b.services,
     }))
   );
+};
+
+// Mijoz o'z bronini bekor qiladi
+export const cancelMyBooking = async (req, res) => {
+  const { token } = req.body;
+  if (!isValidToken(token)) {
+    return res.status(400).json({ message: "So'rov noto'g'ri" });
+  }
+
+  const booking = await Booking.findOne({ viewToken: token });
+  if (!booking) return res.status(404).json({ message: "Bron topilmadi" });
+  if (booking.status !== "new") {
+    return res.status(400).json({ message: "Bu bronni bekor qilib bo'lmaydi" });
+  }
+  if (isPastSlot(booking.date, booking.time)) {
+    return res.status(400).json({ message: "Bron vaqti o'tib ketgan" });
+  }
+
+  booking.status = "cancelled";
+  booking.active = false; // vaqt bo'shaydi
+  await booking.save();
+
+  notifyAdminClientCancelled(booking).catch(logError("Adminga yuborilmadi"));
+  notifyClientCancelled(booking).catch(logError("Mijozga yuborilmadi"));
+
+  res.json({ ok: true });
 };
 
 // Barcha bronlar (admin)
@@ -138,12 +171,32 @@ export const updateBookingStatus = async (req, res) => {
   booking.active = status !== "cancelled"; // bekor qilinsa, vaqt bo'shaydi
   await booking.save();
 
-  // Bekor qilinsa, mijozga Telegramdan xabar (ulangan bo'lsa)
+  // Mijozga Telegramdan xabar (ulangan bo'lsa)
   if (status === "cancelled") {
-    notifyClientCancelled(booking).catch((err) =>
-      console.error("Mijozga yuborilmadi:", err.message)
-    );
+    notifyClientCancelled(booking).catch(logError("Mijozga yuborilmadi"));
+  } else {
+    notifyClientDone(booking).catch(logError("Mijozga yuborilmadi"));
   }
 
   res.json(booking);
+};
+
+// Bitta bronni o'chirish (admin). "Yangi" bronni o'chirib bo'lmaydi
+export const deleteBooking = async (req, res) => {
+  const booking = await Booking.findById(req.params.id);
+  if (!booking) return res.status(404).json({ message: "Bron topilmadi" });
+  if (booking.status === "new") {
+    return res.status(400).json({
+      message: "Avval bronni bekor qiling yoki «Bajarildi» deb belgilang",
+    });
+  }
+
+  await booking.deleteOne();
+  res.json({ ok: true });
+};
+
+// Bugundan oldingi hamma bronlarni o'chirish (admin)
+export const clearPastBookings = async (req, res) => {
+  const result = await Booking.deleteMany({ date: { $lt: todayKey() } });
+  res.json({ deleted: result.deletedCount });
 };
